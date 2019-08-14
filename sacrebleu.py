@@ -1024,19 +1024,27 @@ def _clean(s):
     return re.sub(r'\s+', ' ', s.strip())
 
 
-def process_to_text(rawfile, txtfile, field: int=None):
+def process_to_text(rawfile, txtfile, field: int=None, origlang: str=None):
     """Processes raw files to plain text files.
     :param rawfile: the input file (possibly SGML)
     :param txtfile: the plaintext file
     :param field: For TSV files, which field to extract.
+    :param origlang: For SGM files, which subset of sentences with a given original language to extract.
     """
 
     if not os.path.exists(txtfile) or os.path.getsize(txtfile) == 0:
         logging.info("Processing %s to %s", rawfile, txtfile)
         if rawfile.endswith('.sgm') or rawfile.endswith('.sgml'):
             with smart_open(rawfile) as fin, smart_open(txtfile, 'wt') as fout:
+                print_doc = True
                 for line in fin:
-                    if line.startswith('<seg '):
+                    if origlang and line.startswith('<doc '):
+                        doc_origlang = re.sub(r'.* origlang="([^"]+)".*\n', '\\1', line)
+                        if origlang.startswith('non-'):
+                            print_doc = doc_origlang != origlang[4:]
+                        else:
+                            print_doc = doc_origlang == origlang
+                    if print_doc and line.startswith('<seg '):
                         print(_clean(re.sub(r'<seg.*?>(.*)</seg>.*?', '\\1', line)), file=fout)
         elif rawfile.endswith('.xml'): # IWSLT
             with smart_open(rawfile) as fin, smart_open(txtfile, 'wt') as fout:
@@ -1053,14 +1061,15 @@ def process_to_text(rawfile, txtfile, field: int=None):
                     print(line.rstrip().split('\t')[field], file=fout)
 
 
-def print_test_set(test_set, langpair, side):
+def print_test_set(test_set, langpair, side, origlang=None):
     """Prints to STDOUT the specified side of the specified test set
     :param test_set: the test set to print
     :param langpair: the language pair
     :param side: 'src' for source, 'ref' for reference
+    :param origlang: For SGM files, which subset of sentences with a given original language to use.
     """
 
-    files = download_test_set(test_set, langpair)
+    files = download_test_set(test_set, langpair, origlang=origlang)
     if side == 'src':
         files = [files[0]]
     elif side == 'ref':
@@ -1071,11 +1080,12 @@ def print_test_set(test_set, langpair, side):
         print('\t'.join(map(lambda x: x.rstrip(), lines)))
 
 
-def download_test_set(test_set, langpair=None):
+def download_test_set(test_set, langpair=None, origlang=None):
     """Downloads the specified test to the system location specified by the SACREBLEU environment variable.
 
     :param test_set: the test set to download
     :param langpair: the language pair (needed for some datasets)
+    :param origlang: For SGM files, which subset of sentences with a given original language to use.
     :return: the set of processed files
     """
 
@@ -1143,7 +1153,9 @@ def download_test_set(test_set, langpair=None):
             field = int(field)
         rawpath = os.path.join(rawdir, rawfile)
         outpath = os.path.join(outdir, '{}.{}'.format(pair, src))
-        process_to_text(rawpath, outpath, field=field)
+        if origlang:
+            outpath += '.orig=' + origlang
+        process_to_text(rawpath, outpath, field=field, origlang=origlang)
         found.append(outpath)
 
         refs = DATASETS[test_set][pair][1:]
@@ -1157,7 +1169,9 @@ def download_test_set(test_set, langpair=None):
                 outpath = os.path.join(outdir, '{}.{}.{}'.format(pair, tgt, i))
             else:
                 outpath = os.path.join(outdir, '{}.{}'.format(pair, tgt))
-            process_to_text(rawpath, outpath, field=field)
+            if origlang:
+                outpath += '.orig=' + origlang
+            process_to_text(rawpath, outpath, field=field, origlang=origlang)
             found.append(outpath)
 
     return found
@@ -1189,7 +1203,7 @@ def compute_bleu(correct: List[int],
                  use_effective_order = False) -> BLEU:
     """Computes BLEU score from its sufficient statistics. Adds smoothing.
 
-    Smoothing methods (citing "A Systematic Comparison of Smoothing Techniques for Sentence-Level BLEU", 
+    Smoothing methods (citing "A Systematic Comparison of Smoothing Techniques for Sentence-Level BLEU",
     Boxing Chen and Colin Cherry, WMT 2014: http://aclweb.org/anthology/W14-3346)
 
     - exp: NIST smoothing method (Method 3)
@@ -1335,8 +1349,8 @@ def corpus_bleu(sys_stream: Union[str, Iterable[str]],
     return compute_bleu(correct, total, sys_len, ref_len, smooth_method=smooth_method, smooth_value=smooth_value, use_effective_order=use_effective_order)
 
 
-def raw_corpus_bleu(sys_stream, 
-                    ref_streams, 
+def raw_corpus_bleu(sys_stream,
+                    ref_streams,
                     smooth_value=SMOOTH_VALUE_DEFAULT) -> BLEU:
     """Convenience function that wraps corpus_bleu().
     This is convenient if you're using sacrebleu as a library, say for scoring on dev.
@@ -1469,6 +1483,8 @@ def main():
                             help='tokenization method to use')
     arg_parser.add_argument('--language-pair', '-l', dest='langpair', default=None,
                             help='source-target language pair (2-char ISO639-1 codes)')
+    arg_parser.add_argument('--origlang', '-ol', dest='origlang', default=None,
+                            help='use subset of sentences with a given original language (2-char ISO639-1 codes), "non-" prefix means negation')
     arg_parser.add_argument('--download', type=str, default=None,
                             help='download a test set and quit')
     arg_parser.add_argument('--echo', choices=['src', 'ref', 'both'], type=str, default=None,
@@ -1513,7 +1529,7 @@ def main():
         logging.basicConfig(level=logging.INFO, format='sacreBLEU: %(message)s')
 
     if args.download:
-        download_test_set(args.download, args.langpair)
+        download_test_set(args.download, args.langpair, args.origlang)
         sys.exit(0)
 
     if args.citation:
@@ -1552,7 +1568,7 @@ def main():
         if args.langpair is None or args.test_set is None:
             logging.warning("--echo requires a test set (--t) and a language pair (-l)")
             sys.exit(1)
-        print_test_set(args.test_set, args.langpair, args.echo)
+        print_test_set(args.test_set, args.langpair, args.echo, args.origlang)
         sys.exit(0)
 
     if args.test_set is None and len(args.refs) == 0:
@@ -1581,7 +1597,7 @@ def main():
         logging.warning('You should also pass "--tok zh" when scoring Chinese...')
 
     if args.test_set:
-        _, *ref_files = download_test_set(args.test_set, args.langpair)
+        _, *ref_files = download_test_set(args.test_set, args.langpair, args.origlang)
         if len(ref_files) == 0:
             print('No references found for test set {}/{}.'.format(args.test_set, args.langpair))
             sys.exit(1)
