@@ -2,6 +2,10 @@ language: python
 python:
   - 3.6
   - 3.7
+before_install:
+  - pip install codecov
 install:
-  - pip install "."
+  - pip install .
 script: pytest
+after_success:
+  - codecov
