@@ -1,19 +1,11 @@
-dist: xenial
-sudo: true
-
-before_install:
-  - pip install -r requirements.txt
-  - sudo apt-get -y update
-
-install:
-  - pip install pytest-cov
-
 language: python
 python:
-  - "3.5"
-  - "3.6"
-  - "3.7"
+  - 3.5
+  - 3.6
+  - 3.7
 
-script:
-  - ./test.sh
-  - pytest
+before_install:
+  - python --version
+  - pip install -U -r requirements.txt
+
+script: pytest
