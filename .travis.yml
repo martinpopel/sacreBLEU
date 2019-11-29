@@ -3,8 +3,5 @@ python:
   - 3.6
   - 3.7
 install:
-  - pip install ".[test]"
-script:
-  - pwd
-  - ls -l
-  - pytest test
+  - pip install "."
+script: pytest
