@@ -67,6 +67,11 @@ class UnicodeRegex:
 
     @staticmethod
     @functools.lru_cache(maxsize=1)
+    def punct_re():
+        return re.compile(r'([' + UnicodeRegex.punctuation() + r'])')
+
+    @staticmethod
+    @functools.lru_cache(maxsize=1)
     def nondigit_punct_re():
         return re.compile(r'([^\d])([' + UnicodeRegex.punctuation() + r'])')
 

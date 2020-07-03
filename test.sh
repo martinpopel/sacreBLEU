@@ -46,6 +46,7 @@ EXPECTED["${CMD} -t wmt16,wmt17 -l en-fi --echo ref | ${CMD} -b -w 4 -t wmt16/B,
 EXPECTED["${CMD} -t wmt17 -l en-fi --echo ref | ${CMD} -b -t wmt17/B -l en-fi --detail"]="55.6
 origlang=en                     : sentences=1502 BLEU= 21.4
 origlang=fi                     : sentences=1500 BLEU=100.0"
+EXPECTED["${CMD} -t wmt17 -l en-fi --echo ref | ${CMD} -b -w 4 -t wmt17/B -l en-fi --no-punct"]=54.5101
 EXPECTED["${CMD} -t wmt18,wmt19 -l en-de --echo=src | ${CMD} -t wmt18,wmt19 -l en-de -b --detail"]="3.6
 origlang=de                     : sentences=1498 BLEU=  3.6
 origlang=en                     : sentences=3497 BLEU=  3.5

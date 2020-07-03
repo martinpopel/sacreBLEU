@@ -38,7 +38,7 @@ import urllib.request
 from collections import Counter
 from itertools import zip_longest, filterfalse
 from typing import List, Iterable, Tuple, Union
-from .tokenizer import TOKENIZERS, TokenizeMeCab
+from .tokenizer import TOKENIZERS, TokenizeMeCab, UnicodeRegex
 from .dataset import DATASETS, DOMAINS, COUNTRIES, SUBSETS
 from . import __version__ as VERSION
 
@@ -130,6 +130,10 @@ def bleu_signature(args, numrefs):
     # For the Japanese tokenizer, add a dictionary type and its version to the signature.
     if args.tokenize == "ja-mecab":
         signature['tok'] += "-" + TokenizeMeCab().signature()
+
+    # Let's add the --no-punct flag to the tokenizer signature.
+    if args.no_punct:
+        signature['tok'] += '-no-punct'
 
     if args.test_set is not None:
         signature['test'] = args.test_set
@@ -589,6 +593,7 @@ def corpus_bleu(sys_stream: Union[str, Iterable[str]],
                 smooth_value=None,
                 force=False,
                 lowercase=False,
+                no_punct=False,
                 tokenize=DEFAULT_TOKENIZER,
                 use_effective_order=False) -> BLEU:
     """Produces BLEU scores along with its sufficient statistics from a source against one or more references.
@@ -599,6 +604,7 @@ def corpus_bleu(sys_stream: Union[str, Iterable[str]],
     :param smooth_value: For 'floor' smoothing, the floor to use
     :param force: Ignore data that looks already tokenized
     :param lowercase: Lowercase the data
+    :param no_punct: Delete all punctuation symbols before tokenization
     :param tokenize: The tokenizer to use
     :return: a BLEU object containing everything you'd want
     """
@@ -634,8 +640,12 @@ def corpus_bleu(sys_stream: Union[str, Iterable[str]],
                 logging.warning('It looks like you forgot to detokenize your test data, which may hurt your score.')
                 logging.warning('If you insist your data is detokenized, or don\'t care, you can suppress this message with \'--force\'.')
 
-        output, *refs = [TOKENIZERS[tokenize](x.rstrip()) for x in lines]
+        lines = [TOKENIZERS[tokenize](x.rstrip()) for x in lines]
 
+        if no_punct:
+            lines = [UnicodeRegex.punct_re().sub('.', x) for x in lines]
+        
+        output, *refs = lines
         ref_ngrams, closest_diff, closest_len = ref_stats(output, refs)
 
         sys_len += len(output.split())
@@ -1000,7 +1010,7 @@ def main():
     try:
         for metric in args.metrics:
             if metric == 'bleu':
-                bleu = corpus_bleu(system, refs, smooth_method=args.smooth, smooth_value=args.smooth_value, force=args.force, lowercase=args.lc, tokenize=args.tokenize)
+                bleu = corpus_bleu(system, refs, smooth_method=args.smooth, smooth_value=args.smooth_value, force=args.force, lowercase=args.lc, no_punct=args.no_punct, tokenize=args.tokenize)
                 results.append(bleu)
             elif metric == 'chrf':
                 chrf = corpus_chrf(system, refs[0], beta=args.chrf_beta, order=args.chrf_order, remove_whitespace=not args.chrf_whitespace)
@@ -1040,7 +1050,7 @@ def main():
                 else:
                     subset_str = '%20s' % ''
                 if 'bleu' in args.metrics:
-                    bleu = corpus_bleu(system, refs, smooth_method=args.smooth, smooth_value=args.smooth_value, force=args.force, lowercase=args.lc, tokenize=args.tokenize)
+                    bleu = corpus_bleu(system, refs, smooth_method=args.smooth, smooth_value=args.smooth_value, force=args.force, lowercase=args.lc, no_punct=args.no_punct, tokenize=args.tokenize)
                     print('origlang={} {}: sentences={:{}} BLEU={:{}.{}f}'.format(origlang, subset_str, len(system), sents_digits, bleu.score, width+4, width))
                 if 'chrf' in args.metrics:
                     chrf = corpus_chrf(system, refs[0], beta=args.chrf_beta, order=args.chrf_order, remove_whitespace=not args.chrf_whitespace)
@@ -1133,6 +1143,8 @@ def parse_args():
                             help='floating point width (default: %(default)s)')
     arg_parser.add_argument('--detail', '-d', default=False, action='store_true',
                             help='print extra information (split test sets based on origlang)')
+    arg_parser.add_argument('--no-punct', action='store_true', default=False,
+                            help='Ignore all punctuation symbols (delete before computing BLEU)')
     arg_parser.add_argument('-V', '--version', action='version',
                             version='%(prog)s {}'.format(VERSION))
     args = arg_parser.parse_args()
